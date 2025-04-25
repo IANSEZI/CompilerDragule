@@ -685,11 +685,59 @@ class CompilerAnalyzerApp:
             return False  
     
     def run_lexical_analysis(self):
-        # [Previous implementation with added token saving]
-        if self.run_lexical_analysis_impl():
-            if self.save_tokens():
+        while True:
+            try:
+                code = self._get_input_source()
+                if not code:
+                    if not self._handle_error("No source code provided", fatal=False):
+                        return False
+                    continue
+
+                lexer = Lexer(code)
+                self.current_tokens = lexer.tokenize()
+                
+                if not self.current_tokens or (
+                    len(self.current_tokens) == 1 and 
+                    self.current_tokens[0].type == TokenType.EOF
+                ):
+                    if not self._handle_error("No valid tokens generated from input", fatal=False):
+                        return False
+                    continue
+
+                self.report.add_heading("Lexical Analysis Results", level=2)
+                
+                token_data = []
+                for token in self.current_tokens:
+                    if token.type == TokenType.EOF:
+                        continue
+                    token_info = [
+                        str(token.type).split('.')[-1],
+                        f"'{token.value}'" if token.value is not None else 'None',
+                        f"Line {token.line}, Column {token.column}"
+                    ]
+                    token_data.append(token_info)
+                
+                self.report.add_table(token_data, ["Token Type", "Value", "Position"])
+                
+                token_count = len([t for t in self.current_tokens if t.type != TokenType.EOF])
+                messagebox.showinfo(
+                    "Success", 
+                    f"Lexical analysis completed!\nFound {token_count} tokens."
+                )
+                
+                # Prompt to save tokens
+                save = messagebox.askyesno("Save Tokens", "Do you want to save the tokens to a file?")
+                if save:
+                    if self.save_tokens():
+                        messagebox.showinfo("Success", "Tokens saved successfully.")
                 return True
-        return False
+
+            except LexerError as e:
+                if not self._handle_error(f"Lexical Error: {str(e)}", fatal=False):
+                    return False
+            except Exception as e:
+                if not self._handle_error(f"Unexpected Error: {str(e)}", fatal=False):
+                    return False
 
     def run_ll1_analysis(self):
         if not self._validate_analysis_prerequisites():
