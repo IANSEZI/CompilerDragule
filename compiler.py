@@ -1,5 +1,6 @@
 import sys
 import os
+import pickle
 from enum import Enum, auto
 from collections import defaultdict, OrderedDict
 from tkinter import Tk, filedialog, messagebox, simpledialog, Text, Scrollbar, Frame, Button, Toplevel
