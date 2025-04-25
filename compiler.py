@@ -445,7 +445,8 @@ class LL1Parser:
                 raise SyntaxError(f"Unknown symbol {top}")
         
         return True
-# ========== LR(0) Parser ==========
+
+# ---------- LR(0) Parser Section ----------
 class LR0Parser:
     class ParseTreeNode:
         def __init__(self, symbol, children=None, token=None):
@@ -656,7 +657,6 @@ class CompilerAnalyzerApp:
         self.current_tokens = []
         self.current_parse_tree = None
         self.report = PDFReportGenerator()
-        
 
     def save_tokens(self):
         """Save tokens to a file chosen by the user"""
@@ -682,151 +682,7 @@ class CompilerAnalyzerApp:
             return True
         except Exception as e:
             self._handle_error(f"Failed to load tokens: {str(e)}")
-            return False  
-    
-    def run_lexical_analysis(self):
-        while True:
-            try:
-                code = self._get_input_source()
-                if not code:
-                    if not self._handle_error("No source code provided", fatal=False):
-                        return False
-                    continue
-
-                lexer = Lexer(code)
-                self.current_tokens = lexer.tokenize()
-                
-                if not self.current_tokens or (
-                    len(self.current_tokens) == 1 and 
-                    self.current_tokens[0].type == TokenType.EOF
-                ):
-                    if not self._handle_error("No valid tokens generated from input", fatal=False):
-                        return False
-                    continue
-
-                self.report.add_heading("Lexical Analysis Results", level=2)
-                
-                token_data = []
-                for token in self.current_tokens:
-                    if token.type == TokenType.EOF:
-                        continue
-                    token_info = [
-                        str(token.type).split('.')[-1],
-                        f"'{token.value}'" if token.value is not None else 'None',
-                        f"Line {token.line}, Column {token.column}"
-                    ]
-                    token_data.append(token_info)
-                
-                self.report.add_table(token_data, ["Token Type", "Value", "Position"])
-                
-                token_count = len([t for t in self.current_tokens if t.type != TokenType.EOF])
-                messagebox.showinfo(
-                    "Success", 
-                    f"Lexical analysis completed!\nFound {token_count} tokens."
-                )
-                
-                # Prompt to save tokens
-                save = messagebox.askyesno("Save Tokens", "Do you want to save the tokens to a file?")
-                if save:
-                    if self.save_tokens():
-                        messagebox.showinfo("Success", "Tokens saved successfully.")
-                return True
-
-            except LexerError as e:
-                if not self._handle_error(f"Lexical Error: {str(e)}", fatal=False):
-                    return False
-            except Exception as e:
-                if not self._handle_error(f"Unexpected Error: {str(e)}", fatal=False):
-                    return False
-
-    def run_ll1_analysis(self):
-        if not self._validate_analysis_prerequisites():
             return False
-
-        try:
-            parser = LL1Parser(self.current_grammar)
-            success = parser.parse(self.current_tokens)
-            
-            if not success:
-                if not self._handle_error("LL(1) parsing failed", fatal=False):
-                    return False
-            
-            self.report.add_heading("LL(1) Parse Tree", level=2)
-            self.report.add_parse_tree(parser.parse_tree)
-            
-            ff_data = [
-                [nt, str(parser.first[nt]), str(parser.follow[nt])]
-                for nt in self.current_grammar.non_terminals
-            ]
-            self.report.add_table(ff_data, ["Non-Terminal", "First Set", "Follow Set"])
-            
-            messagebox.showinfo("Success", "LL(1) parsing completed successfully!")
-            
-            # Prompt for next steps
-            choice = messagebox.askyesnocancel(
-                "Next Step",
-                "LL(1) parsing succeeded. What would you like to do next?",
-                detail="Yes: Run LR(0) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
-            )
-            if choice is True:
-                self.run_lr0_analysis()
-            elif choice is False:
-                self.generate_report()
-            return True
-
-        except Exception as e:
-            if not self._handle_error(f"LL(1) Parsing Error: {str(e)}", fatal=False):
-                return False
-
-    def run_lr0_analysis(self):
-        if not self._validate_analysis_prerequisites():
-            return False
-
-        try:
-            parser = LR0Parser(self.current_grammar)
-            success = parser.parse(self.current_tokens)
-            
-            if not success:
-                if not self._handle_error("LR(0) parsing failed", fatal=False):
-                    return False
-            
-            self.report.add_heading("LR(0) Parse Tree", level=2)
-            self.report.add_parse_tree(parser.parse_tree)
-            
-            state_data = []
-            for i, state in enumerate(parser.states):
-                state_data.append([f"State {i}", str(state)])
-            self.report.add_table(state_data, ["State", "Items"])
-            
-            action_data = []
-            for state, actions in parser.action_table.items():
-                for symbol, action in actions.items():
-                    action_data.append([f"State {state}", symbol, str(action)])
-            self.report.add_table(action_data, ["State", "Symbol", "Action"])
-            
-            goto_data = []
-            for state, gotos in parser.goto_table.items():
-                for symbol, goto_state in gotos.items():
-                    goto_data.append([f"State {state}", symbol, f"State {goto_state}"])
-            self.report.add_table(goto_data, ["State", "Non-Terminal", "Goto State"])
-            
-            messagebox.showinfo("Success", "LR(0) parsing completed successfully!")
-            # Prompt for next steps
-            choice = messagebox.askyesnocancel(
-                "Next Step",
-                "LR(0) parsing succeeded. What would you like to do next?",
-                detail="Yes: Run LL(1) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
-            )
-            if choice is True:
-                self.run_ll1_analysis()
-            elif choice is False:
-                self.generate_report()
-            return True
-
-        except Exception as e:
-            if not self._handle_error(f"LR(0) Parsing Error: {str(e)}", fatal=False):
-                return False
-
 
     def _create_code_input_dialog(self):
         """Create a user-friendly code input dialog"""
@@ -939,6 +795,12 @@ class CompilerAnalyzerApp:
                     "Success", 
                     f"Lexical analysis completed!\nFound {token_count} tokens."
                 )
+                
+                # Prompt to save tokens
+                save = messagebox.askyesno("Save Tokens", "Do you want to save the tokens to a file?")
+                if save:
+                    if self.save_tokens():
+                        messagebox.showinfo("Success", "Tokens saved successfully.")
                 return True
 
             except LexerError as e:
@@ -982,31 +844,90 @@ class CompilerAnalyzerApp:
         if not self._validate_analysis_prerequisites():
             return False
 
-        while True:
-            try:
-                parser = LL1Parser(self.current_grammar)
-                success = parser.parse(self.current_tokens)
-                
-                if not success:
-                    if not self._handle_error("LL(1) parsing failed", fatal=False):
-                        return False
-                    continue
-
-                self.report.add_heading("LL(1) Parse Tree", level=2)
-                self.report.add_parse_tree(parser.parse_tree)
-                
-                ff_data = [
-                    [nt, str(parser.first[nt]), str(parser.follow[nt])]
-                    for nt in self.current_grammar.non_terminals
-                ]
-                self.report.add_table(ff_data, ["Non-Terminal", "First Set", "Follow Set"])
-                
-                messagebox.showinfo("Success", "LL(1) parsing completed successfully!")
-                return True
-
-            except Exception as e:
-                if not self._handle_error(f"LL(1) Parsing Error: {str(e)}", fatal=False):
+        try:
+            parser = LL1Parser(self.current_grammar)
+            success = parser.parse(self.current_tokens)
+            
+            if not success:
+                if not self._handle_error("LL(1) parsing failed", fatal=False):
                     return False
+            
+            self.report.add_heading("LL(1) Parse Tree", level=2)
+            self.report.add_parse_tree(parser.parse_tree)
+            
+            ff_data = [
+                [nt, str(parser.first[nt]), str(parser.follow[nt])]
+                for nt in self.current_grammar.non_terminals
+            ]
+            self.report.add_table(ff_data, ["Non-Terminal", "First Set", "Follow Set"])
+            
+            messagebox.showinfo("Success", "LL(1) parsing completed successfully!")
+            
+            # Prompt for next steps
+            choice = messagebox.askyesnocancel(
+                "Next Step",
+                "LL(1) parsing succeeded. What would you like to do next?",
+                detail="Yes: Run LR(0) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
+            )
+            if choice is True:
+                self.run_lr0_analysis()
+            elif choice is False:
+                self.generate_report()
+            return True
+
+        except Exception as e:
+            if not self._handle_error(f"LL(1) Parsing Error: {str(e)}", fatal=False):
+                return False
+
+    def run_lr0_analysis(self):
+        if not self._validate_analysis_prerequisites():
+            return False
+
+        try:
+            parser = LR0Parser(self.current_grammar)
+            success = parser.parse(self.current_tokens)
+            
+            if not success:
+                if not self._handle_error("LR(0) parsing failed", fatal=False):
+                    return False
+            
+            self.report.add_heading("LR(0) Parse Tree", level=2)
+            self.report.add_parse_tree(parser.parse_tree)
+            
+            state_data = []
+            for i, state in enumerate(parser.states):
+                state_data.append([f"State {i}", str(state)])
+            self.report.add_table(state_data, ["State", "Items"])
+            
+            action_data = []
+            for state, actions in parser.action_table.items():
+                for symbol, action in actions.items():
+                    action_data.append([f"State {state}", symbol, str(action)])
+            self.report.add_table(action_data, ["State", "Symbol", "Action"])
+            
+            goto_data = []
+            for state, gotos in parser.goto_table.items():
+                for symbol, goto_state in gotos.items():
+                    goto_data.append([f"State {state}", symbol, f"State {goto_state}"])
+            self.report.add_table(goto_data, ["State", "Non-Terminal", "Goto State"])
+            
+            messagebox.showinfo("Success", "LR(0) parsing completed successfully!")
+            
+            # Prompt for next steps
+            choice = messagebox.askyesnocancel(
+                "Next Step",
+                "LR(0) parsing succeeded. What would you like to do next?",
+                detail="Yes: Run LL(1) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
+            )
+            if choice is True:
+                self.run_ll1_analysis()
+            elif choice is False:
+                self.generate_report()
+            return True
+
+        except Exception as e:
+            if not self._handle_error(f"LR(0) Parsing Error: {str(e)}", fatal=False):
+                return False
 
     def generate_report(self):
         filename = self.file_helper.select_save_location()
