@@ -656,12 +656,15 @@ class CompilerAnalyzerApp:
         self.current_tokens = []
         self.current_parse_tree = None
         self.report = PDFReportGenerator()
-        self.token_file = "tokens.pkl"  # File to save tokens
+        
 
     def save_tokens(self):
-        """Save tokens to a file for later use"""
+        """Save tokens to a file chosen by the user"""
+        filename = self.file_helper.select_save_location(default_name="tokens.pkl")
+        if not filename:
+            return False
         try:
-            with open(self.token_file, 'wb') as f:
+            with open(filename, 'wb') as f:
                 pickle.dump(self.current_tokens, f)
             return True
         except Exception as e:
