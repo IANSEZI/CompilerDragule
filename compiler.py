@@ -742,13 +742,41 @@ class CompilerAnalyzerApp:
     def run_ll1_analysis(self):
         if not self._validate_analysis_prerequisites():
             return False
-        
-        # Ensure we have the latest tokens
-        if not self.load_tokens():
-            return False
 
-        # [Rest of LL1 implementation remains the same]
-        pass
+        try:
+            parser = LL1Parser(self.current_grammar)
+            success = parser.parse(self.current_tokens)
+            
+            if not success:
+                if not self._handle_error("LL(1) parsing failed", fatal=False):
+                    return False
+            
+            self.report.add_heading("LL(1) Parse Tree", level=2)
+            self.report.add_parse_tree(parser.parse_tree)
+            
+            ff_data = [
+                [nt, str(parser.first[nt]), str(parser.follow[nt])]
+                for nt in self.current_grammar.non_terminals
+            ]
+            self.report.add_table(ff_data, ["Non-Terminal", "First Set", "Follow Set"])
+            
+            messagebox.showinfo("Success", "LL(1) parsing completed successfully!")
+            
+            # Prompt for next steps
+            choice = messagebox.askyesnocancel(
+                "Next Step",
+                "LL(1) parsing succeeded. What would you like to do next?",
+                detail="Yes: Run LR(0) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
+            )
+            if choice is True:
+                self.run_lr0_analysis()
+            elif choice is False:
+                self.generate_report()
+            return True
+
+        except Exception as e:
+            if not self._handle_error(f"LL(1) Parsing Error: {str(e)}", fatal=False):
+                return False
 
     def run_lr0_analysis(self):
         if not self._validate_analysis_prerequisites():
