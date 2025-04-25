@@ -781,10 +781,6 @@ class CompilerAnalyzerApp:
     def run_lr0_analysis(self):
         if not self._validate_analysis_prerequisites():
             return False
-        
-        # Ensure we have the latest tokens
-        if not self.load_tokens():
-            return False
 
         try:
             parser = LR0Parser(self.current_grammar)
@@ -797,13 +793,11 @@ class CompilerAnalyzerApp:
             self.report.add_heading("LR(0) Parse Tree", level=2)
             self.report.add_parse_tree(parser.parse_tree)
             
-            # Add state table
             state_data = []
             for i, state in enumerate(parser.states):
                 state_data.append([f"State {i}", str(state)])
             self.report.add_table(state_data, ["State", "Items"])
             
-            # Add action/goto tables
             action_data = []
             for state, actions in parser.action_table.items():
                 for symbol, action in actions.items():
@@ -817,6 +811,16 @@ class CompilerAnalyzerApp:
             self.report.add_table(goto_data, ["State", "Non-Terminal", "Goto State"])
             
             messagebox.showinfo("Success", "LR(0) parsing completed successfully!")
+            # Prompt for next steps
+            choice = messagebox.askyesnocancel(
+                "Next Step",
+                "LR(0) parsing succeeded. What would you like to do next?",
+                detail="Yes: Run LL(1) Parser\nNo: Generate Report\nCancel: Return to Main Menu"
+            )
+            if choice is True:
+                self.run_ll1_analysis()
+            elif choice is False:
+                self.generate_report()
             return True
 
         except Exception as e:
