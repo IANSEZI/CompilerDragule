@@ -672,21 +672,17 @@ class CompilerAnalyzerApp:
             return False
         
     def load_tokens(self):
-        """Load tokens from file"""
+        """Load tokens from a file selected by the user"""
+        filename = self.file_helper.select_file(title="Select Token File", filetypes=(("Pickle files", "*.pkl"), ("All files", "*.*")))
+        if not filename:
+            return False
         try:
-            with open(self.token_file, 'rb') as f:
+            with open(filename, 'rb') as f:
                 self.current_tokens = pickle.load(f)
             return True
         except Exception as e:
             self._handle_error(f"Failed to load tokens: {str(e)}")
-            return False    
-    
-    def run_lexical_analysis(self):
-        # [Previous implementation with added token saving]
-        if self.run_lexical_analysis_impl():
-            if self.save_tokens():
-                return True
-        return False
+            return False
 
     def run_ll1_analysis(self):
         if not self._validate_analysis_prerequisites():
