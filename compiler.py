@@ -222,6 +222,14 @@ class Lexer:
             if char == ']': return Token(TokenType.RBRACKET, ']', line, column)
             if char == ';': return Token(TokenType.SEMICOLON, ';', line, column)
             if char == ',': return Token(TokenType.COMMA, ',', line, column)
+            if char.isalpha() or char == '_':
+                token_value = self.identifier()
+                # Map keywords to their terminal names
+                if token_value in self.keywords:
+                    return Token(TokenType[token_value.upper()], token_value, line, column)
+                else:
+                    return Token(TokenType.IDENTIFIER, token_value, line, column)
+
 
             self.error(f"Unrecognized character '{char}'")
 
@@ -245,9 +253,13 @@ class Grammar:
     def __init__(self):
         self.productions = OrderedDict()
         self.non_terminals = set()
-        self.terminals = set()
+        self.terminals = {
+        'NUMBER', 'IDENTIFIER', 'PLUS', 'MINUS', 'MULTIPLY', 'DIVIDE',
+        'LPAREN', 'RPAREN', 'SEMICOLON', 'VAR', 'ASSIGN', 'PRINT'}
         self.start_symbol = None
         self.valid = False
+        self.first = {}
+        self.follow = {}
 
     def validate_grammar(self):
         if not self.start_symbol:
@@ -256,6 +268,134 @@ class Grammar:
             raise ValueError("Start symbol not in non-terminals")
         self.valid = True
 
+    def compute_follow_sets(self):
+        self.follow = {nt: set() for nt in self.non_terminals}
+        self.follow[self.start_symbol].add('$')
+        
+        changed = True
+        while changed:
+            changed = False
+            for lhs in self.productions:
+                for production in self.productions[lhs]:
+                    for i, symbol in enumerate(production):
+                        if symbol in self.non_terminals:
+                            follow_before = self.follow[symbol].copy()
+                            if i + 1 < len(production):
+                                next_symbol = production[i + 1]
+                                if next_symbol in self.terminals:
+                                    self.follow[symbol].add(next_symbol)
+                                else:
+                                    self.follow[symbol].update(self.first_of_string(production[i + 1:]))
+                            else:
+                                self.follow[symbol].update(self.follow[lhs])
+                            if follow_before != self.follow[symbol]:
+                                changed = True
+
+    def validate_productions(self):
+        """Check that all symbols in productions are defined"""
+        for lhs, productions in self.productions.items():
+            for production in productions:
+                for symbol in production:
+                    if symbol != 'ε' and \
+                    symbol not in self.non_terminals and \
+                    symbol not in self.terminals:
+                        raise ValueError(f"Undefined symbol '{symbol}' in production {lhs} -> {' '.join(production)}")
+        
+        # Check that all non-terminals have productions
+        for nt in self.non_terminals:
+            if nt not in self.productions:
+                raise ValueError(f"Non-terminal '{nt}' has no productions")
+
+    def first_of_string(self, symbols):
+        """Compute FIRST set for a sequence of symbols"""
+        first = set()
+        for symbol in symbols:
+            if symbol in self.terminals:
+                first.add(symbol)
+                break
+            elif symbol in self.non_terminals:
+                first.update(self.first[symbol] - {'ε'})
+                if 'ε' not in self.first[symbol]:
+                    break
+            elif symbol == 'ε':
+                first.add('ε')
+        else:
+            first.add('ε')
+        return first
+
+    def compute_first_sets(self):
+        """Compute FIRST sets for all non-terminals"""
+        self.first = {nt: set() for nt in self.non_terminals}
+        
+        # Add terminals to their own FIRST sets
+        for terminal in self.terminals:
+            self.first[terminal] = {terminal}
+
+        # Initialize with direct terminals
+        for nt, prods in self.productions.items():
+            for prod in prods:
+                if prod[0] in self.terminals:
+                    self.first[nt].add(prod[0])
+
+        # Initialize with direct terminal productions
+        for nt in self.non_terminals:
+            for production in self.productions[nt]:
+                first_symbol = production[0]
+                if first_symbol in self.terminals:
+                    self.first[nt].add(first_symbol)
+        
+                # Iteratively compute FIRST sets
+        changed = True
+        while changed:
+            changed = False
+            for nt, prods in self.productions.items():
+                for prod in prods:
+                    for symbol in prod:
+                        if symbol in self.terminals:
+                            before = len(self.first[nt])
+                            self.first[nt].add(symbol)
+                            if len(self.first[nt]) > before:
+                                changed = True
+                            break
+                        elif symbol in self.non_terminals:
+                            before = len(self.first[nt])
+                            self.first[nt].update(self.first[symbol] - {'ε'})
+                            if 'ε' not in self.first[symbol]:
+                                if len(self.first[nt]) > before:
+                                    changed = True
+                                break
+                    else:
+                        before = len(self.first[nt])
+                        self.first[nt].add('ε')
+                        if len(self.first[nt]) > before:
+                            changed = True
+
+    def compute_follow_sets(self):
+        """Compute FOLLOW sets for all non-terminals"""
+        if not hasattr(self, 'first'):
+            self.compute_first_sets()
+
+        self.follow = {nt: set() for nt in self.non_terminals}
+        self.follow[self.start_symbol].add('$')
+        
+        changed = True
+        while changed:
+            changed = False
+            for nt, prods in self.productions.items():
+                for prod in prods:
+                    trailer = self.follow[nt]
+                    for symbol in reversed(prod):
+                        if symbol in self.non_terminals:
+                            before = len(self.follow[symbol])
+                            self.follow[symbol].update(trailer)
+                            if len(self.follow[symbol]) > before:
+                                changed = True
+                            
+                            if 'ε' in self.first.get(symbol, set()):
+                                trailer.update(self.first[symbol] - {'ε'})
+                            else:
+                                trailer = self.first.get(symbol, set()).copy() 
+    
     def load_from_file(self, filename):
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -269,19 +409,19 @@ class Grammar:
 
                     lhs, rhs = line.split('->', 1)
                     lhs = lhs.strip()
-                    rhs = [prod.strip().split() for prod in rhs.split('|')]
-
                     if not lhs:
                         raise SyntaxError(f"Empty LHS at line {line_num}")
 
                     if lhs not in self.productions:
                         self.productions[lhs] = []
+                    self.non_terminals.add(lhs)
 
-                    for prod in rhs:
+                    productions = [prod.strip().split() for prod in rhs.split('|')]
+
+                    for prod in productions:
                         if not prod:
                             raise SyntaxError(f"Empty production at line {line_num}")
                         self.productions[lhs].append(prod)
-
                         for symbol in prod:
                             if symbol == 'ε':
                                 continue
@@ -293,11 +433,17 @@ class Grammar:
                     if not self.start_symbol:
                         self.start_symbol = lhs
 
+            self.compute_first_sets()
+            self.compute_follow_sets()
             self.terminals.add('$')
+            self.validate_productions()
             self.validate_grammar()
+            self.valid = True
+
         except Exception as e:
             self.valid = False
             raise RuntimeError(f"Grammar loading failed: {str(e)}")
+
 
 # ---------- LL(1) Parser Section ----------
 class LL1Parser:
@@ -317,6 +463,10 @@ class LL1Parser:
             return ret
 
     def __init__(self, grammar):
+        if not hasattr(grammar, 'first') or not hasattr(grammar, 'follow'):
+            grammar.compute_first_sets()
+            grammar.compute_follow_sets()
+        self.grammar = grammar
         self.grammar = grammar
         self.first = defaultdict(set)
         self.follow = defaultdict(set)
@@ -615,7 +765,8 @@ class PDFReportGenerator:
     
     def add_table(self, data, headers):
         table_data = [headers] + data
-        table = Table(table_data)
+        col_widths = [1.5 * inch, 1.5 * inch, 2.5 * inch]
+        table = Table(table_data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.grey),
             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -623,8 +774,12 @@ class PDFReportGenerator:
             ('FONTSIZE', (0,0), (-1,-1), 10),
             ('BOX', (0,0), (-1,-1), 1, colors.black),
             ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),  # Enable wrapping
         ]))
+        self.elements.append(Spacer(1, 12))
         self.elements.append(table)
+        self.elements.append(Spacer(1, 12))
     
     def add_parse_tree(self, root_node):
         tree_data = []
@@ -689,6 +844,9 @@ class CompilerAnalyzerApp:
         dialog = Toplevel(self.file_helper.root)
         dialog.title("Enter Source Code")
         
+        dialog.attributes('-topmost', True)
+        dialog.focus_force()
+
         text_frame = Frame(dialog)
         text_frame.pack(padx=10, pady=10, fill='both', expand=True)
         
@@ -698,6 +856,9 @@ class CompilerAnalyzerApp:
         scrollbar = Scrollbar(text_frame, command=text_area.yview)
         scrollbar.pack(side='right', fill='y')
         text_area.config(yscrollcommand=scrollbar.set)
+
+        # Clear any existing text first
+        text_area.delete('1.0', 'end')
         
         # Add instructions
         text_area.insert('end', "/* Enter your source code here\n")
@@ -821,18 +982,51 @@ class CompilerAnalyzerApp:
 
                 self.current_grammar = Grammar()
                 self.current_grammar.load_from_file(filename)
+
+                # Ensure FIRST and FOLLOW are computed
+                if not hasattr(self.current_grammar, 'first'):
+                    self.current_grammar.compute_first_sets()
+                if not hasattr(self.current_grammar, 'follow'):
+                    self.current_grammar.compute_follow_sets()
+                
+                # Debug prints (remove after testing)
+                print("\nGrammar Loaded Successfully!")
+                print("Non-terminals:", self.current_grammar.non_terminals)
+                print("Terminals:", self.current_grammar.terminals)
+                print("First sets:", self.current_grammar.first)
+                print("Follow sets:", self.current_grammar.follow)
+
+                # Compute necessary sets
+                self.current_grammar.compute_first_sets()
+                self.current_grammar.compute_follow_sets()
                 
                 if not self.current_grammar.valid:
                     if not self._handle_error("Invalid grammar", fatal=False):
                         return False
                     continue
 
+                # Add grammar info to report
                 self.report.add_heading("Grammar Specification", level=2)
+                
+                # Add productions
                 grammar_data = [
-                    [nt, ' -> ', ' | '.join(' '.join(p) for p in prods)]
+                    [nt, ' → ', ' | '.join(' '.join(p) for p in prods)]
                     for nt, prods in self.current_grammar.productions.items()
                 ]
                 self.report.add_table(grammar_data, ["Non-Terminal", "", "Productions"])
+                
+                # Add FIRST sets
+                self.report.add_heading("FIRST Sets", level=3)
+                first_data = [[nt, ', '.join(sorted(self.current_grammar.first[nt]))] 
+                            for nt in self.current_grammar.non_terminals]
+                self.report.add_table(first_data, ["Non-Terminal", "FIRST"])
+                
+                # Add FOLLOW sets
+                self.report.add_heading("FOLLOW Sets", level=3)
+                follow_data = [[nt, ', '.join(sorted(self.current_grammar.follow[nt]))] 
+                            for nt in self.current_grammar.non_terminals]
+                self.report.add_table(follow_data, ["Non-Terminal", "FOLLOW"])
+                
                 messagebox.showinfo("Success", "Grammar loaded successfully!")
                 return True
 
@@ -1021,3 +1215,5 @@ if __name__ == "__main__":
     # Cleanup
     app.file_helper.root.destroy()
     print("\nThank you for using the Compiler Analysis Tool!")
+
+    #yoooo
